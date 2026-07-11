@@ -1,134 +1,88 @@
-# 工作流在 GitHub Actions 页面中显示的名称
 name: Deploy Hexo site to Pages
 
-# 定义工作流的触发条件
 on:
-  # 当代码被推送到 main 分支时，自动运行工作流
+  # 推送到 main 分支后自动触发
   push:
     branches:
-
       - main
 
-  # 允许在 GitHub 仓库的 Actions 页面中手动点击
-  # “Run workflow” 运行工作流
+  # 允许在 Actions 页面手动触发
   workflow_dispatch:
 
-# 设置 GITHUB_TOKEN 的权限
-# GitHub Pages 部署需要 pages 和 id-token 权限
+# GitHub Pages 部署需要的权限
 permissions:
-  # 允许工作流读取仓库代码
   contents: read
-
-  # 允许工作流部署到 GitHub Pages
   pages: write
-
-  # 允许 GitHub Pages 使用 OIDC 身份验证
   id-token: write
 
-# 控制同时运行的部署任务
+# 同一时间只进行一个 Pages 部署
 concurrency:
-  # 所有 Pages 部署使用同一个并发组
   group: pages
-
-  # 当新部署开始时，不取消正在执行的部署
-  # 正在运行的部署会继续完成
   cancel-in-progress: false
 
-# 所有 run 命令默认使用 Bash
-defaults:
-  run:
-    shell: bash
-
 jobs:
-  # ==============================
-  # 第一阶段：构建 Hexo 网站
-  # ==============================
   build:
-    # 使用 GitHub 提供的最新 Ubuntu 运行环境
     runs-on: ubuntu-latest
 
     steps:
-      # 第一步：将仓库代码下载到运行环境
+      # 下载仓库代码和 Git 子模块
       - name: Checkout repository
         uses: actions/checkout@v7
         with:
-          # 如果 Hexo 主题通过 Git submodule 引入，
-          # 这个配置会递归下载所有子模块
           submodules: recursive
 
-      # 第二步：安装 pnpm
-      - name: Install pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          # 这里安装的是 pnpm 11
-          # 建议与本地开发使用的 pnpm 主版本保持一致
-          version: 11
-
-          # 不在这一步自动执行 pnpm install
-          # 后面会单独安装依赖，便于查看错误
-          run_install: false
-
-      # 第三步：安装 Node.js
+      # 安装 Node.js 24
+      # 与本地的 v24.15.0 保持同一个主版本
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          # 指定 Node.js 24
           node-version: "24"
 
-          # 缓存 pnpm 下载的依赖，提高后续构建速度
-          cache: pnpm
+      # 安装 pnpm
+      # 版本从 package.json 的 packageManager 字段读取：
+      # "packageManager": "pnpm@11.10.0"
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          cache: true
+          cache_dependency_path: pnpm-lock.yaml
 
-          # pnpm 缓存所依据的锁文件
-          cache-dependency-path: pnpm-lock.yaml
+      # 输出实际版本，方便排查环境问题
+      - name: Show runtime versions
+        run: |
+          node --version
+          pnpm --version
 
-      # 第四步：配置 GitHub Pages
-      # 这个 Action 会读取 Pages 相关环境信息
+      # 配置 GitHub Pages
       - name: Setup GitHub Pages
-        id: pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
-      # 第五步：根据 pnpm-lock.yaml 安装项目依赖
+      # 严格按照 pnpm-lock.yaml 安装依赖
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # 第六步：生成 Hexo 静态网站
-      # 要求 package.json 中存在：
-      #
-      # "scripts": {
-      #   "build": "hexo generate"
-      # }
-      #
-      # 生成结果通常会保存到 public 目录
+      # 执行 package.json 中的 build 脚本
       - name: Build Hexo site
         run: pnpm run build
 
-      # 第七步：上传 public 目录
-      # 这是供后面的 deploy 作业使用的 Pages artifact
+      # 上传 Hexo 生成的 public 目录
       - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
-          # Hexo 默认生成目录
           path: ./public
 
-  # ==============================
-  # 第二阶段：部署到 GitHub Pages
-  # ==============================
   deploy:
-    # build 成功之后才开始部署
+    # build 成功后再部署
     needs: build
 
-    # 使用 GitHub 提供的 Ubuntu 运行环境
     runs-on: ubuntu-latest
 
-    # 使用 GitHub Pages 专用部署环境
     environment:
       name: github-pages
-
-      # 部署成功后，将 Pages 地址显示在运行结果页面
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      # 将 build 阶段上传的 artifact 部署到 GitHub Pages
+      # 发布到 GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
