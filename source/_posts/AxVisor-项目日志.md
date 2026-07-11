@@ -1,7 +1,10 @@
 ---
 title: AxVisor 项目日志
 date: 2026-07-11 17:41:58
-tags: ArceOS, AxVisor, 虚拟化
+tags:
+  - ArceOS
+  - AxVisor
+  - Virtualization
 ---
 
 # AxVisor 项目日志
